@@ -1,0 +1,99 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-storage
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: local-pv
+spec:
+  capacity:
+    storage: 50Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-storage
+  local:
+    path: /data/local-storage
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - vm-229-189-tencentos
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: local-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: local-storage
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: sd
+  name: sd
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sd
+  template:
+    metadata:
+      labels:
+        app: sd
+    spec:
+      containers:
+        - command: ["/bin/sh", "-c"]
+          args: ["python -u webui.py --listen --port 7860 --allow-code --medvram --xformers --enable-insecure-extension-access --api --precision full --no-half"]
+          image: mfanjie/sd1
+          imagePullPolicy: IfNotPresent
+          name: stable-diffusion
+          env:
+            - name: TRANSFORMERS_CACHE
+              value: "/stable-diffusion-webui/outputs"
+            - name: MPLCONFIGDIR
+              value: "/stable-diffusion-webui/outputs"
+          ports:
+            - containerPort: 7860
+              protocol: TCP
+          volumeMounts:
+            - mountPath: "/stable-diffusion-webui/models"
+              name: models-storage
+              subPath: models
+            - mountPath: "/stable-diffusion-webui/outputs"
+              name: models-storage
+              subPath: outputs
+      volumes:
+        - name: models-storage
+          persistentVolumeClaim:
+            claimName: local-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sd
+  namespace: default
+spec:
+  externalTrafficPolicy: Local
+  ports:
+    - port: 7860
+      protocol: TCP
+      targetPort: 7860
+  selector:
+    app: sd
+  type: LoadBalancer
