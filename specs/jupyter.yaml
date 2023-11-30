@@ -15,11 +15,19 @@ spec:
       containers:
       - image: mfanjie/jupyter
         name: jupyter
+        volumeMounts:
+        - mountPath: /data/jupyter-model
+          name: jupyter-model
+      volumes:
+      - hostPath:
+          path: /data/jupyter-model
+          type: Directory
+        name: jupyter-model
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: jupyter
+  name: jupyterhub
 spec:
   ports:
   - port: 8888
